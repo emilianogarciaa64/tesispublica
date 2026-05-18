@@ -1,0 +1,126 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>PDF Seguro</title>
+  <style>
+    html, body {
+      height: 100%;
+      margin: 0;
+      background: #fff;
+    }
+    #frame {
+      width: 100%;
+      height: 100%;
+      border: 0;
+    }
+  </style>
+</head>
+<body>
+
+<iframe id="frame"></iframe>
+
+<script>
+(async () => {
+  const t0 = performance.now();
+
+  const frame = document.getElementById('frame');
+  const u = new URL(location.href);
+
+  const type = (u.searchParams.get('type') || 'principal').toLowerCase();
+  const search = u.searchParams.get('search') || '';
+
+  const token = localStorage.getItem('token');
+  if (!token) {
+    window.parent.postMessage({
+      type: 'PDF_VIEWER_ERROR',
+      detail: 'TOKEN_MISSING'
+    }, window.location.origin);
+    return;
+  }
+
+  let fetchUrl = '';
+  let ui = null;
+  let docId = null;
+
+  if (type === 'anexo') {
+    ui = u.searchParams.get('ui');
+    if (!ui) {
+      window.parent.postMessage({
+        type: 'PDF_VIEWER_ERROR',
+        detail: 'UI_MISSING'
+      }, window.location.origin);
+      return;
+    }
+    fetchUrl = `/api/anexoPdf?ui=${encodeURIComponent(ui)}`;
+  } else {
+    docId = u.searchParams.get('docId');
+    if (!docId) {
+      window.parent.postMessage({
+        type: 'PDF_VIEWER_ERROR',
+        detail: 'DOCID_MISSING'
+      }, window.location.origin);
+      return;
+    }
+    fetchUrl = `/api/pdf?docId=${encodeURIComponent(docId)}`;
+  }
+
+  try {
+    const resp = await fetch(fetchUrl, {
+      headers: { Authorization: `Bearer ${token}` },
+      cache: 'no-store'
+    });
+
+    if (!resp.ok) {
+      window.parent.postMessage({
+        type: 'PDF_VIEWER_ERROR',
+        detail: 'FETCH_ERROR',
+        status: resp.status,
+        pdfType: type,
+        ui,
+        docId
+      }, window.location.origin);
+      return;
+    }
+
+    const blob = await resp.blob();
+    const blobUrl = URL.createObjectURL(blob);
+
+    frame.addEventListener('load', () => {
+      const duracionMs = performance.now() - t0;
+
+      window.parent.postMessage({
+        type: 'PDF_VIEWER_READY',
+        pdfType: type,
+        ui,
+        docId,
+        duracion_ms: duracionMs,
+        status_http: 200
+      }, window.location.origin);
+    }, { once: true });
+
+    const viewerUrl =
+      `/pdfjs/web/viewer.html?file=${encodeURIComponent(blobUrl)}`
+      + (search ? `#search=${encodeURIComponent(search)}` : '');
+
+    frame.src = viewerUrl;
+
+    window.addEventListener('beforeunload', () => {
+      URL.revokeObjectURL(blobUrl);
+    });
+  } catch (e) {
+    window.parent.postMessage({
+      type: 'PDF_VIEWER_ERROR',
+      detail: 'UNEXPECTED_ERROR',
+      message: e?.message || String(e),
+      pdfType: type,
+      ui,
+      docId
+    }, window.location.origin);
+  }
+})();
+</script>
+
+</body>
+</html>

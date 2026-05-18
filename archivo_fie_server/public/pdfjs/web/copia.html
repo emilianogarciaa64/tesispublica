@@ -1,0 +1,70 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>PDF Seguro</title>
+  <style>
+    html, body {
+      height: 100%;
+      margin: 0;
+      background: #fff;
+    }
+    #frame {
+      width: 100%;
+      height: 100%;
+      border: 0;
+    }
+  </style>
+</head>
+<body>
+
+<iframe id="frame"></iframe>
+
+<script>
+(async () => {
+  const frame = document.getElementById('frame');
+  const u = new URL(location.href);
+
+  const type = (u.searchParams.get('type') || 'principal').toLowerCase();
+  const search = u.searchParams.get('search') || '';
+
+  const token = localStorage.getItem('token');
+  if (!token) return;
+
+  let fetchUrl = '';
+
+  if (type === 'anexo') {
+    const ui = u.searchParams.get('ui');
+    if (!ui) return;
+    fetchUrl = `/api/anexoPdf?ui=${encodeURIComponent(ui)}`;
+  } else {
+    const docId = u.searchParams.get('docId');
+    if (!docId) return;
+    fetchUrl = `/api/pdf?docId=${encodeURIComponent(docId)}`;
+  }
+
+  const resp = await fetch(fetchUrl, {
+    headers: { Authorization: `Bearer ${token}` },
+    cache: 'no-store'
+  });
+
+  if (!resp.ok) return;
+
+  const blob = await resp.blob();
+  const blobUrl = URL.createObjectURL(blob);
+
+  const viewerUrl =
+    `/pdfjs/web/viewer.html?file=${encodeURIComponent(blobUrl)}`
+    + (search ? `#search=${encodeURIComponent(search)}` : '');
+
+  frame.src = viewerUrl;
+
+  window.addEventListener('beforeunload', () => {
+    URL.revokeObjectURL(blobUrl);
+  });
+})();
+</script>
+
+</body>
+</html>
